@@ -2,7 +2,7 @@ import json
 import os
 from openai import OpenAI
 from datetime import datetime
-
+from pydantic import BaseModel
 class OpenAIGenerator():
     """
     A class to interact with OpenAI's API and log usage details.
@@ -64,6 +64,7 @@ class OpenAIGenerator():
                     messages: list,
                     return_usage: bool = False,
                     temperature: float = 0.7,
+                    response_format: BaseModel = None,
                     **kwargs):
         """
         Calls the OpenAI API with the provided messages and logs the usage details.
@@ -90,16 +91,25 @@ class OpenAIGenerator():
         -----
         Logs the usage details including the number of tokens used and the estimated price.
         """
-        res = self.client.chat.completions.create(
-            messages=messages,
-            model=self.model,
-            temperature=temperature,
-            stream=False,
-            **kwargs
-        )
+        if response_format:
+            res = self.client.beta.chat.completions.parse(
+                messages=messages,
+                model=self.model,
+                temperature=temperature,
+                response_format=response_format,
+                **kwargs
+            )
+        else: 
+            res = self.client.chat.completions.create(
+                messages=messages,
+                model=self.model,
+                temperature=temperature,
+                stream=False,
+                **kwargs
+            )
         
         if res.choices:
-            answer = res.choices[0].message.content
+            answer = res.choices[0].message
             usage = {
                 "completion_tokens": res.usage.completion_tokens,
                 "prompt_tokens": res.usage.prompt_tokens,
@@ -117,6 +127,5 @@ class OpenAIGenerator():
             with open("logs/openai_usages.jsonl", 'a') as f:
                 json.dump(log_entry, f)
                 f.write("\n")
-            if return_usage:
-                return answer, price_estimate
-            return answer
+            result = answer.parsed if response_format else answer.content
+            return (result, price_estimate) if return_usage else result
